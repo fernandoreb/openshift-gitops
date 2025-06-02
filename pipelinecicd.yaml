@@ -1,0 +1,103 @@
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: pipeline-generico
+spec:
+  params:
+    - default: git-auth
+      name: GIT_SECRET
+      type: string
+    - default: gogs-demo-git.apps.ocp4-16.farg.com
+      description: The git repository host
+      name: GIT_HOST
+      type: string
+    - default: http
+      name: GIT_PROTOCOL
+      type: string
+    - default: gogs/s2i-sample
+      description: The application git repository
+      name: APP_SOURCE_GIT
+      type: string
+    - default: master
+      name: APP_SOURCE_BRANCH
+      type: string
+    - default: gogs/s2i-sample-config
+      description: The application git repository
+      name: GIT_MANIFESTS
+      type: string
+    - default: master
+      name: GIT_MANIFESTS_BRANCH
+      type: string
+    - default: .
+      name: HELM_PATH
+      type: string
+    - default: s2i-sample
+      name: APP_NAME
+      type: string
+    - default: app-pipeline-example
+      description: The pipelines project runs
+      name: PROJECT_OC_NAME
+      type: string
+    - default: 1.0.0
+      description: The application image tag to build
+      name: TAG
+      type: string
+  tasks:
+    - name: source-clone
+      params:
+        - name: GIT_HOST
+          value: $(params.GIT_HOST)
+        - name: GIT_PROTOCOL
+          value: $(params.GIT_PROTOCOL)
+        - name: GIT_PATH
+          value: $(params.APP_SOURCE_GIT)
+        - name: GIT_SOURCE_BRANCH
+          value: $(params.APP_SOURCE_BRANCH)
+        - name: git-secret-name
+          value: $(params.GIT_SECRET)
+      taskRef:
+        kind: Task
+        name: git-clonev2
+      workspaces:
+        - name: workspace
+          workspace: workspace
+    - name: build-image
+      params:
+        - name: TLSVERIFY
+          value: 'false'
+        - name: IMAGE
+          value: 'image-registry.openshift-image-registry.svc:5000/$(params.PROJECT_OC_NAME)/$(params.APP_NAME):$(params.TAG)'
+      runAfter:
+        - source-clone
+      taskRef:
+        kind: Task
+        name: buildah
+      workspaces:
+        - name: source
+          workspace: workspace
+    - name: update-gitops
+      params:
+        - name: GIT_MANIFESTS_PROTOCOL
+          value: $(params.GIT_PROTOCOL)
+        - name: GIT_MANIFESTS_HOST
+          value: $(params.GIT_HOST)
+        - name: GIT_MANIFESTS
+          value: $(params.GIT_MANIFESTS)
+        - name: GIT_MANIFESTS_BRANCH
+          value: $(params.GIT_MANIFESTS_BRANCH)
+        - name: HELM_PATH
+          value: $(params.HELM_PATH)
+        - name: TAG
+          value: $(params.TAG)
+        - name: git-secret-name
+          value: $(params.GIT_SECRET)
+      runAfter:
+        - build-image
+      taskRef:
+        kind: Task
+        name: update-gitops
+      workspaces:
+        - name: workspace
+          workspace: workspace
+  workspaces:
+    - name: workspace
